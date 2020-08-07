@@ -1,0 +1,309 @@
+---
+title: "Beyond disease and pathogens: The role of different domains of disgust in mental health stigma"
+author: "Joshua T. Hiepler et al. (2020)"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning=FALSE, message = FALSE) 
+```
+
+```{r, include = FALSE}
+#Load necessary libraries
+library(tidyverse)
+library(dplyr)
+library(corrr)
+library(psych)
+library(pwr)
+library(lmerTest)
+library(simr)
+```
+
+```{r}
+#Read in source file
+source <- read.csv("Source.csv")
+```
+
+```{r}
+#Select relevant variables from source file and replace empty and NULL cells with NA
+raw <- select(source, user_id, user_age, q_name, order, dv)
+raw[raw == "NULL"] <- NA
+raw[raw == ""] <- NA 
+```
+
+```{r}
+#Remove rows with NAs
+clean <- filter(raw, !is.na(q_name)) %>%
+  filter(!is.na(dv))
+```
+
+```{r}
+#Filter out all non-unique entries
+clean_unique <- select(clean, user_id, q_name, user_age, dv) %>%
+  group_by(user_id, q_name) %>%
+  distinct() %>%
+  ungroup()
+```
+
+```{r}
+#Finds all "unique duplicates", e.g. different responses to the same question by the same user.
+unique_duplicates <- group_by(clean_unique, user_id, q_name) %>% 
+  mutate(n = n()) %>% 
+  filter(n > 1)
+```
+
+```{r}
+#Manually filter out unique duplicates based on the IDs found in the unique_duplicates tibble and then turn result into wide-format.
+wide_raw <- filter(clean_unique, user_id !=  30579) %>%
+  filter(user_id !=  31106) %>%
+  spread(q_name, dv)
+```
+
+```{r}
+#Remove rows with NAs
+wide_clean <- na.omit(wide_raw)
+```
+
+```{r}
+#Reversal of some questions
+wide_reversed <- wide_clean %>%
+mutate_at(c("AUD_8", "AUD_20", "AUD_21", "BED_8", "BED_20", "BED_21", "BPD_8", "BPD_20", "BPD_21", "SCZ_8", "SCZ_20", "SCZ_21"), funs(recode(., "1"= 9, "2"= 8, "3"= 7, "4"= 6, "5"= 5, "6"= 4, "7"= 3, "8"= 2, "9"= 1, .default = NaN)))
+```
+
+```{r}
+#Collection of AUD answers & converison into numeric
+AUD_raw <- select(wide_reversed, AUD_1, AUD_2, AUD_3, AUD_4, AUD_5, AUD_6, AUD_7, AUD_8, AUD_9, AUD_10, AUD_11, AUD_12, AUD_13, AUD_14, AUD_15, AUD_16, AUD_17, AUD_18, AUD_19, AUD_20, AUD_21, AUD_22, AUD_23, AUD_24, AUD_25, AUD_26, AUD_27) %>%
+  mutate_all(funs(as.numeric(as.character(.))))
+```
+
+```{r}
+#Collection of BED answers & converison into numeric
+BED_raw <- select(wide_reversed, BED_1, BED_2, BED_3, BED_4, BED_5, BED_6, BED_7, BED_8, BED_9, BED_10, BED_11, BED_12, BED_13, BED_14, BED_15, BED_16, BED_17, BED_18, BED_19, BED_20, BED_21, BED_22, BED_23, BED_24, BED_25, BED_26, BED_27) %>%
+  mutate_all(funs(as.numeric(as.character(.))))
+```
+
+```{r}
+#Collection of AUD answers & converison into numeric
+BPD_raw <- select(wide_reversed, BPD_1, BPD_2, BPD_3, BPD_4, BPD_5, BPD_6, BPD_7, BPD_8, BPD_9, BPD_10, BPD_11, BPD_12, BPD_13, BPD_14, BPD_15, BPD_16, BPD_17, BPD_18, BPD_19, BPD_20, BPD_21, BPD_22, BPD_23, BPD_24, BPD_25, BPD_26, BPD_27) %>%
+  mutate_all(funs(as.numeric(as.character(.))))
+```
+
+```{r}
+#Collection of AUD answers & converison into numeric
+SCZ_raw <- select(wide_reversed, SCZ_1, SCZ_2, SCZ_3, SCZ_4, SCZ_5, SCZ_6, SCZ_7, SCZ_8, SCZ_9, SCZ_10, SCZ_11, SCZ_12, SCZ_13, SCZ_14, SCZ_15, SCZ_16, SCZ_17, SCZ_18, SCZ_19, SCZ_20, SCZ_21, SCZ_22, SCZ_23, SCZ_24, SCZ_25, SCZ_26, SCZ_27) %>%
+  mutate_all(funs(as.numeric(as.character(.))))
+```
+
+```{r}
+#Collection of Sex Disgust answers & converison into numeric
+sex_disgust_raw <- select(wide_reversed, sex_1, sex_2, sex_3, sex_4, sex_5, sex_6, sex_7) %>%
+  mutate_all(funs(as.numeric(as.character(.))))
+```
+
+```{r}
+#Collection of Moral Disgust answers & converison into numeric
+mor_disgust_raw <- select(wide_reversed, mor_1, mor_2, mor_3, mor_4, mor_5, mor_6, mor_7) %>%
+  mutate_all(funs(as.numeric(as.character(.))))
+```
+
+```{r}
+#Collection of Pathogen Disgust answers & converison into numeric
+path_disgust_raw <- select(wide_reversed, path_1, path_2, path_3, path_4, path_5, path_6, path_7) %>%
+  mutate_all(funs(as.numeric(as.character(.))))
+```
+
+```{r}
+#Calculation of all means & collection into single table
+scores <- select(wide_reversed, user_id) %>%
+  mutate(AUD = rowSums(AUD_raw)) %>%
+  mutate(BED = rowSums(BED_raw)) %>%
+  mutate(BPD = rowSums(BPD_raw)) %>%
+  mutate(SCZ = rowSums(SCZ_raw)) %>%
+  mutate(sex_disgust = rowSums(sex_disgust_raw)) %>%
+  mutate(mor_disgust = rowSums(mor_disgust_raw)) %>%
+  mutate(path_disgust = rowSums(path_disgust_raw))
+```
+
+```{r}
+##Create long format version of scores
+long_scores <- gather(scores, disorder, score, AUD:SCZ) %>% mutate(disorder = recode(disorder, "AUD" = "Alcohol Use Disorder", "BED" = "Binge-eating Disorder", "BPD" = "Borderline Personality Disorder", "SCZ" = "Schizophrenia"))
+```
+
+```{r}
+##Z-score of all scores
+z_scores <- scores %>%
+  mutate(
+    path_disgust = (path_disgust - mean(path_disgust))/sd(path_disgust),
+    mor_disgust = (mor_disgust - mean(mor_disgust))/sd(mor_disgust),
+    sex_disgust = (sex_disgust - mean(sex_disgust))/sd(sex_disgust),
+    AUD = (AUD - mean(AUD))/sd(AUD),
+    BED = (BED - mean(BED))/sd(BED),
+    BPD = (BPD - mean(BPD))/sd(BPD),
+    SCZ = (BPD - mean(BPD))/sd(BPD)
+  )
+```
+
+```{r}
+##Create long format version of z_scores
+z_scores_long <- gather(z_scores, disorder, score, AUD:SCZ) 
+z_scores_long_renamed <- mutate(z_scores_long, disorder = recode(disorder, "AUD" = "Alcohol Use Disorder", "BED" = "Binge-eating Disorder", "BPD" = "Borderline Personality Disorder", "SCZ" = "Schizophrenia"))
+```
+
+## Demographics - General
+```{r}
+participant_count <- wide_clean%>% summarise(n=n())
+glimpse(participant_count)
+```
+
+## Demographics - Sex
+```{r}
+sex_count <- group_by(wide_clean, Gender)%>% count()
+glimpse(sex_count)
+```
+
+## Age Range
+```{r}
+max_Age <- as.numeric(wide_clean$user_age) %>%
+  max(wide_clean$user_age, na.rm = TRUE)
+min_Age <- as.numeric(wide_clean$user_age) %>%
+  min(wide_clean$user_age, na.rm = TRUE)
+glimpse(max_Age)
+glimpse(min_Age)
+```
+
+## Age Mean & SD - General
+```{r}
+general_age<-select(wide_clean,user_age)%>%summarise(mean=mean(user_age), sd=sd(user_age))
+glimpse(general_age)
+```
+
+## Age Mean & SD - Sex
+```{r}
+sex_age<-group_by(wide_clean,Gender)%>%summarise(mean=mean(user_age), sd=sd(user_age))
+glimpse(sex_age)
+```
+
+## Descriptives (Mean, SD & Cronbach's Alpha)
+```{r, include = FALSE}
+descriptives <- summarise(scores, AUD_mean = mean(AUD), AUD_sd = sd(AUD), BED_mean = mean(BED), BED_sd = sd(BED), BPD_mean = mean(BPD), BPD_sd = sd(BPD), SCZ_mean = mean(SCZ), SCZ_sd = sd(SCZ), sex_mean = mean(sex_disgust), sex_sd = sd(sex_disgust), mor_mean = mean(mor_disgust), mor_sd = sd(mor_disgust), path_mean = mean(path_disgust), path_sd = sd(path_disgust))
+
+descriptives <- mutate(descriptives, AUD_cron = round( c(psych::alpha(AUD_raw)$total$raw_alpha), digits = 2)) %>%
+  mutate(BED_cron = round( c(psych::alpha(BED_raw)$total$raw_alpha), digits = 2)) %>%
+  mutate(BPD_cron = round( c(psych::alpha(BPD_raw)$total$raw_alpha), digits = 2)) %>%
+  mutate(SCZ_cron = round( c(psych::alpha(SCZ_raw)$total$raw_alpha), digits = 2)) %>%
+  mutate(sex_cron = round( c(psych::alpha(sex_disgust_raw)$total$raw_alpha), digits = 2)) %>%
+  mutate(mor_cron = round( c(psych::alpha(mor_disgust_raw)$total$raw_alpha), digits = 2)) %>%
+  mutate(path_cron = round( c(psych::alpha(path_disgust_raw)$total$raw_alpha), digits = 2))
+```
+```{r}
+glimpse(descriptives)
+```
+
+## Statistical Power of Linear Regressions
+```{r}
+pwr <- pwr.f2.test(u = 3, v = 160, sig.level = 0.05, power = .8)
+glimpse(pwr)
+# Small, Medium and Large - 0.02, 0.15, and 0.35
+```
+
+## Mixed Linear Model
+```{r}
+mix_reg <- lmer(score ~ sex_disgust + mor_disgust + path_disgust +
+                         (1 | user_id) +
+                         (1 | disorder),
+            data = z_scores_long)
+summary(mix_reg)
+```
+
+## Statistical Power of Mixed Linear Model
+### Uncomment powerSim to run simulations for power calculation
+```{r}
+fixef(mix_reg)["sex_disgust"] <- 0.26
+#powerSim(mix_reg)
+```
+
+## Regression for AUD (x = sex_disgust, mor_disgust, path_disgust ; y = AUD)
+```{r}
+AUD_reg <- lm(AUD ~ sex_disgust+ path_disgust+ mor_disgust, data= z_scores)
+summary(AUD_reg)
+```
+
+
+## Regression for BED (x = sex_disgust, mor_disgust, path_disgust ; y = BED)
+```{r}
+BED_reg <- lm(BED ~ sex_disgust+ path_disgust+ mor_disgust, data= z_scores)
+summary(BED_reg)
+```
+
+
+## Regression for BPD (x = sex_disgust, mor_disgust, path_disgust ; y = BPD)
+```{r}
+BPD_reg <- lm(BPD ~ sex_disgust+ path_disgust+ mor_disgust, data= z_scores)
+summary(BPD_reg)
+```
+
+
+## Regression for SCZ (x = sex_disgust, mor_disgust, path_disgust ; y = SCZ)
+```{r}
+SCZ_reg <- lm(SCZ ~ sex_disgust+ path_disgust+ mor_disgust, data= z_scores)
+summary(SCZ_reg)
+```
+
+## Single Regression Graphs for Sexual Disgust
+```{r}
+z_scores_long_renamed %>%
+  ggplot(aes(sex_disgust, score, color = disorder)) +
+  geom_smooth(method = lm, alpha = 0.2) +
+  theme_bw() +
+  theme(text=element_text(family="serif", size=14)) +
+  xlab("Sexual Disgust (z-scored)") +
+  ylab("Stigmatisation (z-scored)") +
+  coord_cartesian(ylim = c(-1, 1)) +
+  theme(legend.position = "none") +
+  facet_wrap(vars(disorder), ncol = 2)
+
+ggsave("SexualDisgustGraphs.png", width = 10, height = 5)
+```
+
+
+## Single Regression Graphs for Moral Disgust
+```{r}
+z_scores_long_renamed %>%
+  ggplot(aes(mor_disgust, score, color = disorder)) +
+  geom_smooth(method = lm, alpha = 0.2) +
+  theme_bw() +
+  theme(text=element_text(family="serif", size=14)) +
+  xlab("Moral Disgust (z-scored)") +
+  ylab("Stigmatisation (z-scored)") +
+  coord_cartesian(ylim = c(-1, 1)) +
+  theme(legend.position = "none")+
+  facet_wrap(vars(disorder), ncol = 2)
+
+ggsave("MoralDisgustGraphs.png", width = 10, height = 5)
+```
+
+## Single Regression Graphs for Pathogen Disgust
+```{r}
+z_scores_long_renamed %>%
+  ggplot(aes(path_disgust, score, color = disorder)) +
+  geom_smooth(method = lm, alpha = 0.2) +
+  theme_bw() +
+  theme(text=element_text(family="serif", size=14)) +
+  xlab("Pathogen Disgust (z-scored)") +
+  ylab("Stigmatisation (z-scored)") +
+  coord_cartesian(ylim = c(-1, 1)) +
+  theme(legend.position = "none")+
+  facet_wrap(vars(disorder), ncol = 2)
+
+ggsave("PathogenDisgustGraphs.png", width = 10, height = 5)
+```
+
+## References
+```{r}
+citation()
+citation("lmerTest")
+citation("lme4")
+```
+
